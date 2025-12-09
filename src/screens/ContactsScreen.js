@@ -2,11 +2,21 @@ import React, { useState } from 'react';
 import { 
   View, Text, FlatList, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, Modal, Linking 
 } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+
+// CORRECCIÓN 1: Importación segura de íconos
+import { Ionicons } from '@expo/vector-icons';
+
 import { useContacts } from '../hooks/useContacts';
 import CreateContactForm from '../components/forms/CreateContactForm';
 
-const colors = { primary: '#E91E63', background: '#121212', surface: '#1e1e1e', success: '#25D366' }; // WhatsApp Green
+// Definimos colores seguros para evitar errores si no hay theme
+const colors = { 
+  primary: '#E91E63', 
+  background: '#121212', 
+  surface: '#1e1e1e', 
+  success: '#25D366',
+  text: '#ffffff'
+}; 
 
 export default function ContactsScreen({ user }) {
   const { distribuidores, loading, obtenerMarcas, addContact, deleteContact, catalogo } = useContacts(user);
@@ -26,7 +36,7 @@ export default function ContactsScreen({ user }) {
       return;
     }
 
-    // 2. Construir mensaje base
+    // 2. Construir mensaje
     let mensaje = `Hola ${contact.nombre}, necesito reponer stock de ${contact.marcaRepresentada}. Mis productos son:\n`;
     productosMarca.forEach(p => {
       mensaje += `- ${p.tipoProducto}\n`;
@@ -36,17 +46,23 @@ export default function ContactsScreen({ user }) {
     abrirLink(contact.telefono, mensaje);
   };
 
+  // CORRECCIÓN 2: Uso de enlace universal https://wa.me
   const abrirLink = (telefono, mensaje) => {
-    // Formato Ecuador 593 (ajustar si es necesario)
-    const phone = telefono.startsWith('593') ? telefono : `593${telefono}`;
-    const url = `whatsapp://send?phone=${phone}&text=${encodeURIComponent(mensaje)}`;
+    // Limpieza de número
+    let phone = telefono.replace(/[^\d]/g, '');
+
+    // Asegurar código de país (Ecuador 593 por defecto si no lo tiene)
+    if (phone.length === 10 && phone.startsWith('0')) {
+      phone = '593' + phone.substring(1);
+    } else if (!phone.startsWith('593') && phone.length > 0) {
+       // Si es un número corto sin código, asumimos Ecuador
+       phone = '593' + phone; 
+    }
+
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(mensaje)}`;
     
-    Linking.canOpenURL(url).then(supported => {
-      if (supported) {
-        return Linking.openURL(url);
-      } else {
-        Alert.alert("Error", "WhatsApp no está instalado");
-      }
+    Linking.openURL(url).catch(() => {
+      Alert.alert("Error", "No se pudo abrir el navegador.");
     });
   };
 
@@ -161,5 +177,5 @@ const styles = StyleSheet.create({
 
   emptyText: { color: '#666', textAlign: 'center', marginTop: 50, fontStyle: 'italic' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { width: '90%', maxHeight: '80%' }
+  modalContent: { width: '90%', maxHeight: '80%' } // Ajuste visual para el modal
 });

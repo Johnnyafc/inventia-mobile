@@ -13,17 +13,50 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.jhonny.inventiamobile",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Necesitamos acceso a la cámara para escanear productos.",
+        "NSMicrophoneUsageDescription": "Necesitamos acceso al micrófono para el asistente de voz.",
+        "NSSpeechRecognitionUsageDescription": "Necesitamos reconocer tu voz para agregar productos."
+      }
     },
     "android": {
+      "package": "com.jhonny.inventiamobile",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.INTERNET"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Permite a Inventia acceder a tu cámara para escanear.",
+          "microphonePermission": "Permite a Inventia acceder a tu micrófono.",
+          "recordAudioAndroid": true
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Permite a Inventia escucharte para agregar productos.",
+          "speechRecognitionPermission": "Permite a Inventia reconocer tu voz."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "dcc057f6-092e-4afd-926e-214ade926b02"
+      }
     }
   }
 }

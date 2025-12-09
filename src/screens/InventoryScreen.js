@@ -14,9 +14,13 @@ import {
 } from 'react-native';
 import { ref, onValue, remove, push, set } from 'firebase/database';
 import { database } from '../config/firebase';
-import Ionicons from '@expo/vector-icons/Ionicons';
 
+// --- CORRECCIÓN CLAVE: Importación segura de Ionicons ---
+import { Ionicons } from '@expo/vector-icons';
+
+// Componentes
 import CreateProductForm from '../components/forms/CreateProductForm';
+import VoiceModal from '../components/modals/VoiceModal';
 
 const colors = {
   primary: '#E91E63',
@@ -34,16 +38,19 @@ export default function InventoryScreen({ user }) {
   const [search, setSearch] = useState('');
   const [filteredProducts, setFilteredProducts] = useState([]);
   
-  // --- ESTADOS ---
+  // Modales
   const [createModalVisible, setCreateModalVisible] = useState(false);
-  const [actionModalVisible, setActionModalVisible] = useState(false); // Modal para Cantidad
+  const [actionModalVisible, setActionModalVisible] = useState(false); 
+  const [voiceVisible, setVoiceVisible] = useState(false); 
   
+  // Datos
   const [selectedProduct, setSelectedProduct] = useState(null);
-  const [actionType, setActionType] = useState(''); // 'sell' o 'delete'
+  const [actionType, setActionType] = useState('');
   const [quantityInput, setQuantityInput] = useState('1'); 
   const [tempCode, setTempCode] = useState(null);
+  const [voiceData, setVoiceData] = useState(null);
 
-  // 1. CARGA DE DATOS
+  // 1. CARGAR DATOS
   useEffect(() => {
     if (!user || !user.uid) return;
 
@@ -84,7 +91,7 @@ export default function InventoryScreen({ user }) {
     return () => unsub();
   }, [user]);
 
-  // 2. FILTRADO
+  // 2. BUSCADOR
   useEffect(() => {
     if (search === '') {
       setFilteredProducts(products);
@@ -99,8 +106,6 @@ export default function InventoryScreen({ user }) {
   }, [search, products]);
 
   // --- ACCIONES ---
-
-  // Abrir modal de Cantidad
   const openActionModal = (item, type) => {
     setSelectedProduct(item);
     setActionType(type);
@@ -108,13 +113,11 @@ export default function InventoryScreen({ user }) {
     setActionModalVisible(true);
   };
 
-  // Procesar Venta o Eliminación por Lotes
   const handleBatchAction = async () => {
     const qty = parseInt(quantityInput);
     
-    // Validaciones
     if (isNaN(qty) || qty <= 0) {
-      Alert.alert("Error", "La cantidad debe ser mayor a 0.");
+      Alert.alert("Error", "Cantidad inválida.");
       return;
     }
     if (qty > selectedProduct.cantidad) {
@@ -123,19 +126,17 @@ export default function InventoryScreen({ user }) {
     }
 
     try {
-      // Tomamos los IDs necesarios (FIFO)
       const idsToProcess = selectedProduct.ids.slice(0, qty);
       const promises = [];
 
-      // 1. Eliminar del Stock
+      // Eliminar del Stock
       idsToProcess.forEach(id => {
         promises.push(remove(ref(database, `usuarios/${user.uid}/productos/${id}`)));
       });
 
-      // 2. Si es Venta, registrar en Historial
+      // Si es VENTA, registrar en Historial
       if (actionType === 'sell') {
         const fecha = new Date().toISOString();
-        // Registramos una venta por cada unidad vendida
         for (let i = 0; i < qty; i++) {
           const ventaRef = push(ref(database, `usuarios/${user.uid}/historialVentas`));
           promises.push(set(ventaRef, {
@@ -149,27 +150,32 @@ export default function InventoryScreen({ user }) {
       }
 
       await Promise.all(promises);
-      
       const actionText = actionType === 'sell' ? 'vendido' : 'eliminado';
       Alert.alert("Éxito", `Se han ${actionText} ${qty} unidades.`);
       setActionModalVisible(false);
 
     } catch (error) {
-      console.error(error);
       Alert.alert("Error", "No se pudo completar la operación.");
     }
   };
 
+  // --- CREACIÓN ---
   const handleOpenCreate = () => {
-    const generatedCode = `MAN-${Math.floor(Math.random() * 10000)}`;
-    setTempCode(generatedCode);
+    setTempCode(`MAN-${Math.floor(Math.random() * 10000)}`);
+    setVoiceData(null);
     setCreateModalVisible(true);
   };
 
-  // --- RENDERIZADO DE TARJETA ---
+  const handleVoiceResult = (data) => {
+    setVoiceVisible(false);
+    setTempCode(`VOZ-${Math.floor(Math.random() * 10000)}`);
+    setVoiceData(data); 
+    setCreateModalVisible(true);
+  };
+
+  // --- RENDERIZADO ---
   const renderProductItem = ({ item }) => (
     <View style={styles.card}>
-      {/* Fila Superior */}
       <View style={styles.cardTopRow}>
         <View style={styles.iconContainer}>
           <Ionicons name="cube-outline" size={24} color={colors.primary} />
@@ -185,20 +191,12 @@ export default function InventoryScreen({ user }) {
         </View>
       </View>
 
-      {/* Fila Inferior: Botones */}
       <View style={styles.actionsRow}>
-        <TouchableOpacity 
-          style={[styles.actionBtn, styles.sellBtn]} 
-          onPress={() => openActionModal(item, 'sell')}
-        >
+        <TouchableOpacity style={[styles.actionBtn, styles.sellBtn]} onPress={() => openActionModal(item, 'sell')}>
           <Ionicons name="cart-outline" size={18} color="white" />
           <Text style={styles.actionText}>Vender</Text>
         </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.actionBtn, styles.deleteBtn]} 
-          onPress={() => openActionModal(item, 'delete')}
-        >
+        <TouchableOpacity style={[styles.actionBtn, styles.deleteBtn]} onPress={() => openActionModal(item, 'delete')}>
           <Ionicons name="trash-outline" size={18} color="white" />
           <Text style={styles.actionText}>Eliminar</Text>
         </TouchableOpacity>
@@ -208,17 +206,29 @@ export default function InventoryScreen({ user }) {
 
   return (
     <View style={styles.container}>
+      {/* CABECERA */}
       <View style={styles.headerRow}>
         <View>
           <Text style={styles.title}>Inventario</Text>
           <Text style={styles.subtitle}>{products.length} Productos distintos</Text>
         </View>
-        <TouchableOpacity style={styles.addButton} onPress={handleOpenCreate}>
-          <Ionicons name="add-circle" size={20} color="white" />
-          <Text style={styles.addText}>Nuevo</Text>
-        </TouchableOpacity>
+        
+        <View style={{flexDirection: 'row'}}>
+            <TouchableOpacity 
+                style={[styles.addButton, { backgroundColor: '#333', marginRight: 10 }]} 
+                onPress={() => setVoiceVisible(true)}
+            >
+                <Ionicons name="mic" size={22} color="#E91E63" />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.addButton} onPress={handleOpenCreate}>
+                <Ionicons name="add-circle" size={20} color="white" />
+                <Text style={styles.addText}>Nuevo</Text>
+            </TouchableOpacity>
+        </View>
       </View>
 
+      {/* BUSCADOR */}
       <View style={styles.searchContainer}>
         <Ionicons name="search" size={20} color="#888" style={{marginRight: 10}} />
         <TextInput 
@@ -232,12 +242,14 @@ export default function InventoryScreen({ user }) {
         )}
       </View>
 
+      {/* LISTA (Con corrección de KeyExtractor) */}
       {loading ? (
         <ActivityIndicator size="large" color={colors.primary} style={{marginTop: 50}} />
       ) : (
         <FlatList
           data={filteredProducts}
-          keyExtractor={(item) => `${item.nombre}-${item.marca}`}
+          // Clave única combinando nombre, marca e índice para evitar duplicados
+          keyExtractor={(item, index) => `${item.nombre}-${item.marca}-${index}`}
           renderItem={renderProductItem}
           contentContainerStyle={{ paddingBottom: 100 }}
           ListEmptyComponent={
@@ -249,7 +261,7 @@ export default function InventoryScreen({ user }) {
         />
       )}
 
-      {/* MODAL DE CANTIDAD (VENDER / ELIMINAR) */}
+      {/* MODAL 1: CANTIDAD */}
       <Modal visible={actionModalVisible} animationType="fade" transparent={true} onRequestClose={() => setActionModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.actionModalContent}>
@@ -264,14 +276,7 @@ export default function InventoryScreen({ user }) {
               <TouchableOpacity onPress={() => setQuantityInput(prev => Math.max(1, parseInt(prev || 0) - 1).toString())} style={styles.qtyBtn}>
                 <Ionicons name="remove" size={24} color="white" />
               </TouchableOpacity>
-              
-              <TextInput 
-                style={styles.qtyInput}
-                value={quantityInput}
-                onChangeText={setQuantityInput}
-                keyboardType="numeric"
-              />
-
+              <TextInput style={styles.qtyInput} value={quantityInput} onChangeText={setQuantityInput} keyboardType="numeric"/>
               <TouchableOpacity onPress={() => setQuantityInput(prev => Math.min(selectedProduct?.cantidad, parseInt(prev || 0) + 1).toString())} style={styles.qtyBtn}>
                 <Ionicons name="add" size={24} color="white" />
               </TouchableOpacity>
@@ -281,11 +286,7 @@ export default function InventoryScreen({ user }) {
               <TouchableOpacity style={[styles.btn, styles.cancel]} onPress={() => setActionModalVisible(false)}>
                 <Text style={styles.btnText}>Cancelar</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.btn, actionType === 'sell' ? styles.sellBtn : styles.deleteBtn]} 
-                onPress={handleBatchAction}
-              >
+              <TouchableOpacity style={[styles.btn, actionType === 'sell' ? styles.sellBtn : styles.deleteBtn]} onPress={handleBatchAction}>
                 <Text style={styles.btnText}>Confirmar</Text>
               </TouchableOpacity>
             </View>
@@ -293,7 +294,7 @@ export default function InventoryScreen({ user }) {
         </View>
       </Modal>
 
-      {/* MODAL CREAR */}
+      {/* MODAL 2: CREAR */}
       <Modal visible={createModalVisible} animationType="slide" transparent={true} onRequestClose={() => setCreateModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -302,6 +303,7 @@ export default function InventoryScreen({ user }) {
             </TouchableOpacity>
             <CreateProductForm 
               initialCode={tempCode} 
+              initialData={voiceData} 
               user={user} 
               onSuccess={() => setCreateModalVisible(false)} 
               onCancel={() => setCreateModalVisible(false)} 
@@ -309,6 +311,13 @@ export default function InventoryScreen({ user }) {
           </View>
         </View>
       </Modal>
+
+      {/* MODAL 3: VOZ */}
+      <VoiceModal 
+        visible={voiceVisible} 
+        onClose={() => setVoiceVisible(false)}
+        onResult={handleVoiceResult}
+      />
 
     </View>
   );
@@ -341,14 +350,12 @@ const styles = StyleSheet.create({
   deleteBtn: { backgroundColor: '#C62828' },
   actionText: { color: 'white', fontWeight: 'bold', marginLeft: 5, fontSize: 14 },
 
-  // ESTILOS MODAL CANTIDAD
   actionModalContent: { backgroundColor: '#252525', width: '85%', borderRadius: 15, padding: 20, alignItems: 'center', borderWidth: 1, borderColor: '#444' },
   actionModalTitle: { color: 'white', fontSize: 20, fontWeight: 'bold', marginBottom: 5 },
   actionModalSubtitle: { color: '#ccc', fontSize: 14, marginBottom: 20 },
   qtyContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 25 },
   qtyBtn: { backgroundColor: '#444', width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
   qtyInput: { backgroundColor: colors.inputBg, color: 'white', width: 80, height: 50, textAlign: 'center', fontSize: 24, fontWeight: 'bold', marginHorizontal: 15, borderRadius: 8, borderWidth: 1, borderColor: '#555' },
-  
   btnRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%' },
   btn: { flex: 0.48, padding: 12, borderRadius: 8, alignItems: 'center' },
   cancel: { backgroundColor: '#444' },
