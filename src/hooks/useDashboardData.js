@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ref, onValue } from 'firebase/database';
+// Asegúrate de que esta ruta apunte a tu configuración real
 import { database } from '../config/firebase';
 
 export const useDashboardData = (user) => {
@@ -9,7 +10,7 @@ export const useDashboardData = (user) => {
   const [resumen, setResumen] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // 1. Cargar Datos desde Firebase
+  // 1. Cargar Datos desde Firebase Realtime Database
   useEffect(() => {
     if (!user) return;
 
@@ -21,58 +22,69 @@ export const useDashboardData = (user) => {
 
     const unsubscribes = [];
 
-    // Función auxiliar para leer datos
-    const escuchar = (referencia, setter) => {
+    const escuchar = (referencia, setter, callback) => {
       const unsub = onValue(referencia, (snapshot) => {
         const data = snapshot.val();
         const lista = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
         setter(lista);
+        if (callback) callback(lista);
       });
       unsubscribes.push(unsub);
     };
 
     escuchar(refs.catalogo, setCatalogo);
-    escuchar(refs.stock, setProductosLista => {
-        setStock(setProductosLista);
-        // Cuando cargan los datos básicos, quitamos el loading inicial
-        setLoading(false);
-    });
-    escuchar(refs.ventas, (list) => {
-        // Ordenar por fecha descendente
-        const ordenadas = list.sort((a, b) => new Date(b.fechaVenta) - new Date(a.fechaVenta));
-        setHistorial(ordenadas);
+    
+    // Al cargar stock, asumimos que la carga inicial terminó para mostrar algo en pantalla
+    escuchar(refs.stock, setStock, () => setLoading(false));
+    
+    escuchar(refs.ventas, (lista) => {
+      // Ordenar por fecha descendente (más reciente primero)
+      const ordenadas = lista.sort((a, b) => new Date(b.fechaVenta) - new Date(a.fechaVenta));
+      setHistorial(ordenadas);
     });
 
     return () => unsubscribes.forEach(fn => fn());
   }, [user]);
 
-  // 2. Generar Resumen (Matemática)
+  // 2. Generar Resumen (Lógica Matemática)
   useEffect(() => {
-    if (!catalogo.length && !stock.length && !historial.length) return;
+    if (catalogo.length === 0 && stock.length === 0 && historial.length === 0) return;
 
     const agrupados = {};
 
-    // Procesar Stock
+    // A. Procesar Stock Actual
     stock.forEach(prod => {
-      const key = `${prod.tipoProducto}-${prod.marcaFabricante}`;
+      const nombre = prod.tipoProducto;
+      const marca = prod.marcaFabricante;
+      // Convertir precio a float seguro
+      const precio = parseFloat(prod.precio) || 0;
+      const key = `${nombre}-${marca}`;
+
       if (!agrupados[key]) {
-        const plantilla = catalogo.find(c => c.tipoProducto === prod.tipoProducto && c.marcaFabricante === prod.marcaFabricante);
+        // Buscar slots máximos en el catálogo (plantilla)
+        const plantilla = catalogo.find(c => c.tipoProducto === nombre && c.marcaFabricante === marca);
+        const slotsMaximos = plantilla?.slotsMaximos ? parseInt(plantilla.slotsMaximos) : 100;
+
         agrupados[key] = {
-          nombre: prod.tipoProducto,
-          marca: prod.marcaFabricante,
-          precio: parseFloat(prod.precio) || 0,
+          nombre,
+          marca,
+          precio,
           stock: 0,
           vendidos: 0,
-          slotsMaximos: plantilla?.slotsMaximos ? parseInt(plantilla.slotsMaximos) : 100
+          slotsMaximos
         };
       }
       agrupados[key].stock += 1;
     });
 
-    // Procesar Ventas (para saber qué se vende más)
+    // B. Procesar Ventas (para métricas de ingresos)
     historial.forEach(venta => {
-        const key = `${venta.tipoProducto}-${venta.marcaFabricante}`;
-        // Nota: Si se vendió algo que ya no está en catálogo, lo ignoramos o lo creamos básico
+        const nombre = venta.tipoProducto;
+        const marca = venta.marcaFabricante;
+        const key = `${nombre}-${marca}`;
+        
+        // Si el producto ya no existe en stock, intentamos crearlo temporalmente para el reporte
+        // o si ya existe, sumamos la venta.
         if (agrupados[key]) {
             agrupados[key].vendidos += 1;
         }
@@ -87,20 +99,29 @@ export const useDashboardData = (user) => {
     setResumen(resultado);
   }, [catalogo, stock, historial]);
 
-  // 3. Calcular Métricas Finales
+  // 3. Calcular Métricas Finales para el Dashboard
+  
+  // Lógica Web: Contar categorías únicas (Set), no total de items
+  const totalCategorias = new Set(catalogo.map(c => c.tipoProducto?.toLowerCase())).size;
+
   const metricas = {
-    totalCategorias: catalogo.length, // Aproximado según tu lógica original usabas Set, pero length es más rápido aquí
+    totalCategorias: totalCategorias || 0,
     totalStock: stock.length,
     totalVentas: historial.length,
+    // Suma del valor de todo lo que hay en stock
     valorStock: resumen.reduce((acc, curr) => acc + curr.dineroStock, 0).toFixed(2),
-    valorVentas: historial.reduce((acc, curr) => acc + (parseFloat(curr.precio) || 0), 0).toFixed(2),
+    // Suma del valor de todo lo vendido (busca precio o precioVentaFinal)
+    valorVentas: historial.reduce((acc, curr) => acc + (parseFloat(curr.precio || curr.precioVentaFinal) || 0), 0).toFixed(2),
   };
 
-  // 4. Filtros
-  const productosMasVendidos = [...resumen].sort((a, b) => b.vendidos - a.vendidos).slice(0, 5);
+  // 4. Preparar Listas Filtradas
+  const productosMasVendidos = [...resumen]
+    .sort((a, b) => b.vendidos - a.vendidos)
+    .slice(0, 5);
   
   const productosReponer = resumen
-    .map(p => ({ ...p, porcentaje: (p.stock / p.slotsMaximos) * 100 }))
+    .map(p => ({ ...p, porcentaje: p.slotsMaximos ? (p.stock / p.slotsMaximos) * 100 : 0 }))
+    // Filtramos solo los que están al 50% o menos (Crítico y Bajo)
     .filter(p => p.porcentaje <= 50)
     .sort((a, b) => a.porcentaje - b.porcentaje);
 

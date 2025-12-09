@@ -45,12 +45,10 @@ const RestockRow = ({ item }) => {
   );
 };
 
-// --- PANTALLA PRINCIPAL (IMPORTANTE: export default) ---
+// --- PANTALLA PRINCIPAL ---
 export default function DashboardScreen({ user, onNavigate }) {
-  // Verificamos que el hook exista antes de usarlo
   const data = useDashboardData(user);
   
-  // Protección por si el hook falla
   if (!data) return <ActivityIndicator size="large" color={colors.primary} />;
 
   const { loading, metricas, ultimasVentas, productosReponer } = data;
@@ -79,7 +77,7 @@ export default function DashboardScreen({ user, onNavigate }) {
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         
-        {/* ACCIONES RÁPIDAS */}
+        {/* ACCIONES RÁPIDAS (Navegación) */}
         <Text style={styles.sectionTitle}>Acciones Rápidas</Text>
         <View style={styles.actionRow}>
             <TouchableOpacity 
@@ -146,7 +144,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
   loadingText: { color: colors.textSecondary, marginTop: 10 },
-  header: { padding: 20, paddingTop: 20, backgroundColor: colors.surface, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#333' },
+  header: { padding: 20, paddingTop: 60, backgroundColor: colors.surface, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#333' },
   greeting: { fontSize: 22, fontWeight: 'bold', color: colors.textPrimary },
   subGreeting: { fontSize: 14, color: colors.textSecondary },
   logoutBtn: { padding: 8, backgroundColor: '#2c2c2c', borderRadius: 8 },
